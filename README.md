@@ -7,6 +7,7 @@
 
 - **有插件时**：![PixPin_2025-01-18_19-01-45](https://github.com/user-attachments/assets/20d88ee0-d25f-4d1d-ad77-31567683ed16)
 
+📺 [视频讲解](https://www.bilibili.com/video/BV1xENZeyE7U/?vd_source=fabaa6d7797f3722ecb57a313189fb48)
 
 ## 功能 ✨
 
