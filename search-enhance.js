@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name              搜索引擎增强
 // @namespace         search_enhance_namespace
-// @version           2.0.0
+// @version           3.0.0
 // @description       搜索引擎导航增强,支持百度、必应、Google等
 // @author            Your Name
 // @include           *://www.baidu.com/*
 // @include           *://www.so.com/s*
 // @include           *://www.sogou.com/web*
 // @include           *://cn.bing.com/search*
+// @include           *://www.bing.com/search*
 // @include           *://www.google.com/search*
 // @include           *://www.google.com.hk/search*
 // @require           https://code.jquery.com/jquery-3.6.0.min.js
@@ -18,14 +19,15 @@
 // ==/UserScript==
 
 function SearchEnginesNavigation() {
-    // 导航配置数据
+    // 导航配置数据（统一使用body作为容器）
     this.searchEnginesData = [
-        {"host": "www.baidu.com", "element": "#content_right", "elementInput": "#kw"},
-        {"host": "www.so.com", "element": "#side", "elementInput": "#keyword"},
-        {"host": "www.sogou.com", "element": "#right", "elementInput": "#upquery"},
-        {"host": "cn.bing.com", "element": "#b_context", "elementInput": "#sb_form_q"},
-        {"host": "www.google.com", "element": "#rhs,#rcnt", "elementInput": "input[name='q'],textarea[name='q']"},
-        {"host": "www.google.com.hk", "element": "#rhs,#rcnt", "elementInput": "input[name='q'],textarea[name='q']"}
+        {"host": "www.baidu.com", "element": "body", "elementInput": "#kw"},
+        {"host": "www.so.com", "element": "body", "elementInput": "#keyword"},
+        {"host": "www.sogou.com", "element": "body", "elementInput": "#upquery"},
+        {"host": "cn.bing.com", "element": "body", "elementInput": "#sb_form_q"},
+        {"host": "www.bing.com", "element": "body", "elementInput": "#sb_form_q"},
+        {"host": "www.google.com", "element": "body", "elementInput": "input[name='q'],textarea[name='q']"},
+        {"host": "www.google.com.hk", "element": "body", "elementInput": "input[name='q'],textarea[name='q']"}
     ];
 
     // 默认导航数据
@@ -40,7 +42,8 @@ function SearchEnginesNavigation() {
             {"name": "豆瓣搜索", "url": "https://www.douban.com/search?q=@@"},
             {"name": "小红书", "url": "https://www.xiaohongshu.com/search_result?keyword=@@"},
             {"name": "CSDN", "url": "https://so.csdn.net/so/search?q=@@"},
-            {"name": "博客园", "url": "https://www.cnblogs.com/search?q=@@"}
+            {"name": "博客园", "url": "https://www.cnblogs.com/search?q=@@"},
+            {"name": "GitHub", "url": "https://github.com/search?q=@@"}
         ]},
         {"name": "视频搜索", "list": [
             {"name": "B站搜索", "url": "https://search.bilibili.com/all?keyword=@@"},
@@ -52,19 +55,24 @@ function SearchEnginesNavigation() {
     // 创建导航HTML
     this.createHtml = function (element, elementInput, navigationData) {
         const elementId = Math.ceil(Math.random() * 100000000);
+        const hostKey = window.location.host;
 
-        // 创建CSS样式
+        // 统一CSS样式
         const css = `
             #search_nav_${elementId} {
                 position: fixed;
-                top: 150px;
-                right: ${window.location.host === "www.google.com" ? "650px" : "300px"};  // Google 搜索时更靠左
-                margin: 0;
+                top: ${GM_getValue(`navPosition_${hostKey}`)?.y || 120}px;
+                left: ${GM_getValue(`navPosition_${hostKey}`)?.x || 20}px;
+                z-index: 999999;
+                width: 280px;
+                max-height: 80vh;
+                overflow-y: auto;
+                cursor: move;
+                user-select: none;
                 padding: 12px 15px;
                 background: rgba(255, 255, 255, 0.95);
                 border-radius: 12px;
                 box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-                z-index: 9999;
                 backdrop-filter: blur(5px);
                 border: 1px solid rgba(0, 0, 0, 0.05);
             }
@@ -84,20 +92,16 @@ function SearchEnginesNavigation() {
             #search_nav_${elementId} .nav-links a {
                 display: inline-block;
                 padding: 4px 8px;
-                color: ${window.location.host === "www.google.com" ? "#1a73e8" : "#555"};
+                color: #555;
                 text-decoration: none;
                 font-size: 13px;
-                background: ${window.location.host === "www.google.com" ?
-                    "rgba(26, 115, 232, 0.03)" :
-                    "rgba(0, 0, 0, 0.02)"};
+                background: rgba(0, 0, 0, 0.02);
                 border-radius: 6px;
                 transition: all 0.2s ease;
             }
             #search_nav_${elementId} .nav-links a:hover {
-                color: ${window.location.host === "www.google.com" ? "#1967d2" : "#1a73e8"};
-                background: ${window.location.host === "www.google.com" ?
-                    "rgba(26, 115, 232, 0.08)" :
-                    "rgba(26, 115, 232, 0.05)"};
+                color: #1a73e8;
+                background: rgba(26, 115, 232, 0.05);
                 transform: translateY(-1px);
             }
             #search_nav_${elementId} .nav-section {
@@ -145,6 +149,41 @@ function SearchEnginesNavigation() {
                     window.open(url, '_blank');
                 });
             });
+
+            // 添加拖拽功能
+            const navElement = document.querySelector(`#search_nav_${elementId}`);
+            if (navElement) {
+                let isDragging = false;
+                let startX, startY, initialX, initialY;
+
+                navElement.addEventListener('mousedown', (e) => {
+                    isDragging = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    initialX = navElement.offsetLeft;
+                    initialY = navElement.offsetTop;
+                    navElement.style.opacity = '0.8';
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    if (!isDragging) return;
+                    const dx = e.clientX - startX;
+                    const dy = e.clientY - startY;
+                    navElement.style.left = `${initialX + dx}px`;
+                    navElement.style.top = `${initialY + dy}px`;
+                });
+
+                document.addEventListener('mouseup', () => {
+                    if (isDragging) {
+                        isDragging = false;
+                        navElement.style.opacity = '1';
+                        GM_setValue(`navPosition_${hostKey}`, {
+                            x: navElement.offsetLeft,
+                            y: navElement.offsetTop
+                        });
+                    }
+                });
+            }
         }
     };
 
@@ -155,22 +194,23 @@ function SearchEnginesNavigation() {
             this.hookBaidu();
         } else if (host === "www.google.com") {
             this.hookGoogle();
+        } else if (host === "www.bing.com" || host === "cn.bing.com") {
+            this.hookBing();
         }
     };
 
-    // 百度搜索优化
-    this.hookBaidu = function () {
-        // 移除广告
+    // 必应搜索优化
+    this.hookBing = function () {
+        // 处理必应的广告
         const removeAds = () => {
-            document.querySelectorAll('div[style*="visibility"][id*="1"]').forEach(el => el.remove());
-            document.querySelectorAll('.ec_tuiguang_link').forEach(el => el.remove());
+            document.querySelectorAll('.b_ad').forEach(ad => ad.remove());
         };
 
         // 定期检查并移除广告
         setInterval(removeAds, 1000);
 
-        // 搜索结果新标签页打开
-        document.querySelectorAll('#content_left a').forEach(link => {
+        // 新标签页打开搜索结果
+        document.querySelectorAll('.b_algo a').forEach(link => {
             link.setAttribute('target', '_blank');
         });
     };
