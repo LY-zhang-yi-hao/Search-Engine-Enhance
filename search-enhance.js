@@ -1,253 +1,285 @@
 // ==UserScript==
 // @name              搜索引擎增强
 // @namespace         search_enhance_namespace
-// @version           3.0.0
-// @description       搜索引擎导航增强,支持百度、必应、Google等
-// @author            Your Name
-// @include           *://www.baidu.com/*
-// @include           *://www.so.com/s*
-// @include           *://www.sogou.com/web*
-// @include           *://cn.bing.com/search*
-// @include           *://www.bing.com/search*
-// @include           *://www.google.com/search*
-// @include           *://www.google.com.hk/search*
-// @require           https://code.jquery.com/jquery-3.6.0.min.js
+// @version           4.0.0
+// @description       搜索引擎导航增强，支持拖拽、缩放、折叠和状态记忆，加载更稳定。
+// @author            zyh
+// @match             *://www.baidu.com/*
+// @match             *://www.so.com/s*
+// @match             *://www.sogou.com/web*
+// @match             *://cn.bing.com/search*
+// @match             *://www.bing.com/search*
+// @match             *://www.google.com/search*
+// @match             *://www.google.com.hk/search*
 // @grant             GM_getValue
 // @grant             GM_setValue
-// @grant             GM_xmlhttpRequest
-// @license           MIT License
+// @license           MIT
+// @downloadURL https://update.greasyfork.org/scripts/524101/%E6%90%9C%E7%B4%A2%E5%BC%95%E6%93%8E%E5%A2%9E%E5%BC%BA.user.js
+// @updateURL https://update.greasyfork.org/scripts/524101/%E6%90%9C%E7%B4%A2%E5%BC%95%E6%93%8E%E5%A2%9E%E5%BC%BA.meta.js
 // ==/UserScript==
 
-function SearchEnginesNavigation() {
-    // 导航配置数据（统一使用body作为容器）
-    this.searchEnginesData = [
-        {"host": "www.baidu.com", "element": "body", "elementInput": "#kw"},
-        {"host": "www.so.com", "element": "body", "elementInput": "#keyword"},
-        {"host": "www.sogou.com", "element": "body", "elementInput": "#upquery"},
-        {"host": "cn.bing.com", "element": "body", "elementInput": "#sb_form_q"},
-        {"host": "www.bing.com", "element": "body", "elementInput": "#sb_form_q"},
-        {"host": "www.google.com", "element": "body", "elementInput": "input[name='q'],textarea[name='q']"},
-        {"host": "www.google.com.hk", "element": "body", "elementInput": "input[name='q'],textarea[name='q']"}
-    ];
+(function() {
+    'use strict';
 
-    // 默认导航数据
-    this.defaultNavigationData = [
-        {"name": "搜索引擎", "list": [
-            {"name": "百度", "url": "https://www.baidu.com/s?wd=@@"},
-            {"name": "必应", "url": "https://cn.bing.com/search?q=@@"},
-            {"name": "Google", "url": "https://www.google.com/search?q=@@"}
-        ]},
-        {"name": "综合搜索", "list": [
-            {"name": "知乎搜索", "url": "https://www.zhihu.com/search?q=@@"},
-            {"name": "豆瓣搜索", "url": "https://www.douban.com/search?q=@@"},
-            {"name": "小红书", "url": "https://www.xiaohongshu.com/search_result?keyword=@@"},
-            {"name": "CSDN", "url": "https://so.csdn.net/so/search?q=@@"},
-            {"name": "博客园", "url": "https://www.cnblogs.com/search?q=@@"},
-            {"name": "GitHub", "url": "https://github.com/search?q=@@"}
-        ]},
-        {"name": "视频搜索", "list": [
-            {"name": "B站搜索", "url": "https://search.bilibili.com/all?keyword=@@"},
-            {"name": "抖音", "url": "https://www.douyin.com/search/@@"},
-            {"name": "YouTube", "url": "https://www.youtube.com/results?search_query=@@"}
-        ]}
-    ];
+    /**
+     * SearchEnhancer 类，用于封装所有功能
+     */
+    class SearchEnhancer {
+        /**
+         * 构造函数，脚本的入口
+         */
+        constructor() {
+            this.host = window.location.host;
+            this.initData();
 
-    // 创建导航HTML
-    this.createHtml = function (element, elementInput, navigationData) {
-        const elementId = Math.ceil(Math.random() * 100000000);
-        const hostKey = window.location.host;
+            // 检查当前网站是否是目标搜索引擎
+            this.engineConfig = this.searchEnginesData.find(engine => this.host.includes(engine.host));
+            if (!this.engineConfig) {
+                return; // 如果不是，则不执行任何操作
+            }
 
-        // 统一CSS样式
-        const css = `
-            #search_nav_${elementId} {
-                position: fixed;
-                top: ${GM_getValue(`navPosition_${hostKey}`)?.y || 120}px;
-                left: ${GM_getValue(`navPosition_${hostKey}`)?.x || 20}px;
-                z-index: 999999;
-                width: 280px;
-                max-height: 80vh;
-                overflow-y: auto;
-                cursor: move;
-                user-select: none;
-                padding: 12px 15px;
-                background: rgba(255, 255, 255, 0.95);
-                border-radius: 12px;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-                backdrop-filter: blur(5px);
-                border: 1px solid rgba(0, 0, 0, 0.05);
-            }
-            #search_nav_${elementId} .nav-title {
-                font-size: 13px;
-                font-weight: 500;
-                margin-bottom: 8px;
-                color: ${window.location.host === "www.google.com" ? "#5f6368" : "#666"};
-                padding-bottom: 4px;
-                border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-            }
-            #search_nav_${elementId} .nav-links {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 6px;
-            }
-            #search_nav_${elementId} .nav-links a {
-                display: inline-block;
-                padding: 4px 8px;
-                color: #555;
-                text-decoration: none;
-                font-size: 13px;
-                background: rgba(0, 0, 0, 0.02);
-                border-radius: 6px;
-                transition: all 0.2s ease;
-            }
-            #search_nav_${elementId} .nav-links a:hover {
-                color: #1a73e8;
-                background: rgba(26, 115, 232, 0.05);
-                transform: translateY(-1px);
-            }
-            #search_nav_${elementId} .nav-section {
-                margin-bottom: 12px;
-                width: 100%;
-            }
-            #search_nav_${elementId} .nav-section:last-child {
-                margin-bottom: 0;
-            }
-        `;
+            // 使用 waitForElement 等待搜索框加载完成后，再初始化UI
+            // 这是为了确保我们操作的DOM元素已经存在
+            this.waitForElement(this.engineConfig.elementInput, () => {
+                this.settings = this.loadSettings();
+                // 确保折叠前的高度有一个合理的默认值
+                this.lastExpandedHeight = this.settings.height > 40 ? this.settings.height : 400;
+                this.initUI();
+            });
+        }
 
-        // 添加样式
-        const style = document.createElement('style');
-        style.textContent = css;
-        document.head.appendChild(style);
+        /**
+         * 初始化搜索引擎和导航链接的数据
+         */
+        initData() {
+            this.searchEnginesData = [
+                {host: "baidu.com", name: "百度", elementInput: "#kw"},
+                {host: "so.com", name: "360搜索", elementInput: "#keyword"},
+                {host: "sogou.com", name: "搜狗", elementInput: "#upquery"},
+                {host: "bing.com", name: "必应", elementInput: "#sb_form_q"},
+                {host: "google.com", name: "谷歌", elementInput: "input[name='q'],textarea[name='q']"}
+            ];
+            this.navigationData = [
+                {"name": "搜索引擎", "list": [
+                    {"name": "百度", "url": "https://www.baidu.com/s?wd=@@"},
+                    {"name": "必应", "url": "https://cn.bing.com/search?q=@@"},
+                    {"name": "Google", "url": "https://www.google.com/search?q=@@"}
+                ]},
+                {"name": "综合搜索", "list": [
+                    {"name": "知乎", "url": "https://www.zhihu.com/search?q=@@"},              
+                    {"name": "CSDN", "url": "https://so.csdn.net/so/search?q=@@"},
+                    {"name": "GitHub", "url": "https://github.com/search?q=@@"},
+                    {"name": "小红书", "url": "https://www.xiaohongshu.com/search_result?keyword=@@"}
+                ]},
+                 {"name": "视频搜索", "list": [
+                    {"name": "B站", "url": "https://search.bilibili.com/all?keyword=@@"},
+                    {"name": "抖音", "url": "https://www.douyin.com/search/@@"},
+                    {"name": "YouTube", "url": "https://www.youtube.com/results?search_query=@@"}
+                ]},
+                 {"name": "学术搜索", "list": [
+                    {"name": "谷粉学术", "url": "https://www.defineabc.com/scholar?hl=en&q=@@" },
+                    {"name": "Aminer", "url": "https://www.aminer.cn/search?t=b&q=@@"}
+                ]}
+            ];
+        }
 
-        // 创建导航HTML
-        let html = `<div id="search_nav_${elementId}">`;
-        navigationData.forEach(category => {
-            html += `
-                <div class="nav-section">
-                    <div class="nav-title">${category.name}</div>
-                    <div class="nav-links">
+        /**
+         * 初始化UI：创建面板、应用样式、绑定事件
+         */
+        initUI() {
+            if (document.getElementById('search-enhancer-panel')) return; // 防止重复创建
+            this.createPanel();
+            this.applyStyles();
+            this.attachEventListeners();
+        }
+
+        /**
+         * 从油猴存储中加载设置
+         */
+        loadSettings() {
+            const defaults = { x: 20, y: 120, width: 280, height: 400, isCollapsed: false };
+            const saved = GM_getValue(`enhancer_settings_${this.host}`) || {};
+            return { ...defaults, ...saved }; // 合并默认值和已保存值
+        }
+
+        /**
+         * 保存当前设置到油猴存储
+         */
+        saveSettings() {
+            if (!this.panel) return;
+            const currentSettings = {
+                x: this.panel.offsetLeft,
+                y: this.panel.offsetTop,
+                width: this.panel.offsetWidth,
+                height: this.lastExpandedHeight, // 关键：总是保存展开时的高度
+                isCollapsed: this.panel.classList.contains('collapsed')
+            };
+            GM_setValue(`enhancer_settings_${this.host}`, currentSettings);
+        }
+
+        /**
+         * 创建UI面板的HTML结构
+         */
+        createPanel() {
+            let html = '<div class="nav-header"><div class="nav-title">搜索导航</div><button class="nav-toggle-btn">▲</button></div>';
+            html += '<div class="nav-content">';
+            this.navigationData.forEach(cat => {
+                html += `<div class="nav-section"><div class="section-title">${cat.name}</div><div class="nav-links">`;
+                cat.list.forEach(item => {
+                    html += `<a href="#" data-url="${item.url}">${item.name}</a>`;
+                });
+                html += '</div></div>';
+            });
+            html += '</div><div class="resize-handle"></div>';
+
+            this.panel = document.createElement('div');
+            this.panel.id = 'search-enhancer-panel';
+            this.panel.innerHTML = html;
+            document.body.appendChild(this.panel);
+
+            // 如果保存的状态是折叠的，则初始化为折叠状态
+            if (this.settings.isCollapsed) {
+                this.panel.classList.add('collapsed');
+                this.panel.querySelector('.nav-content').style.display = 'none';
+                this.panel.querySelector('.nav-toggle-btn').textContent = '▼';
+            }
+        }
+
+        /**
+         * 应用CSS样式
+         */
+        applyStyles() {
+            const  = this.settings;
+            const css = `
+                #search-enhancer-panel {
+                    position:fixed; top:${.y}px; left:${.x}px; width:${.width}px; height:${.isCollapsed ? 'auto' : `${.height}px`};
+                    min-width:200px; min-height:40px; z-index:999999; display:flex; flex-direction:column;
+                    background:rgba(255,255,255,0.40); border-radius:10px; box-shadow:0 5px 20px rgba(0,0,0,0.12);
+                    backdrop-filter:blur(8px); border:1px solid rgba(0,0,0,0.08); user-select:none; overflow:hidden; transition: height 0.2ease-in-out;
+                }
+                #search-enhancer-panel.no-transition { transition: none !important; }
+                #search-enhancer-panel.collapsed { height: auto !important; }
+                .nav-header { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(0,0,0,0.04); cursor:move; flex-shrink: 0; }
+                .nav-title { font-weight:600; color:#333; }
+                .nav-toggle-btn { border:none; background:none; cursor:pointer; font-size:16px; color:#555; padding:5px; }
+                .nav-content { padding:10px 15px; overflow-y:auto; flex-grow:1; }
+                .nav-section { margin-bottom:12px; }
+                .section-title { font-size:13px; font-weight:500; color:#666; margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #eee; }
+                .nav-links { display:flex; flex-wrap:wrap; gap:8px; }
+                .nav-links a { padding:4px 9px; color:#333; text-decoration:none; font-size:13px; background:#f1f1f1; border-radius:5px; transition:all 0.2; }
+                .nav-links a:hover { background:#007bff; color:white; transform:translateY(-1px); }
+                .resize-handle { position:absolute; bottom:0; right:0; width:15px; height:15px; cursor:se-resize; z-index:10; }
             `;
+            const styleEl = document.createElement('style');
+            styleEl.textContent = css;
+            document.head.appendChild(styleEl);
+        }
 
-            category.list.forEach(item => {
-                html += `<a href="javascript:void(0)" data-url="${item.url}">${item.name}</a>`;
+        /**
+         * 绑定所有事件监听器
+         */
+        attachEventListeners() {
+            const header = this.panel.querySelector('.nav-header');
+            const toggleBtn = this.panel.querySelector('.nav-toggle-btn');
+            const resizeHandle = this.panel.querySelector('.resize-handle');
+
+            // 折叠/展开
+            toggleBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                const isCollapsed = this.panel.classList.toggle('collapsed');
+                this.panel.querySelector('.nav-content').style.display = isCollapsed ? 'none' : 'block';
+                toggleBtn.textContent = isCollapsed ? '▼' : '▲';
+                if (!isCollapsed) {
+                    this.panel.style.height = `${this.lastExpandedHeight}px`;
+                }
+                this.saveSettings();
             });
 
-            html += `</div></div>`;
-        });
-        html += '</div>';
-
-        // 添加到页面
-        const targetElement = document.querySelector(element);
-        if (targetElement) {
-            targetElement.insertAdjacentHTML('afterbegin', html);
-
-            // 绑定点击事件
-            const searchInput = document.querySelector(elementInput);
-            document.querySelectorAll(`#search_nav_${elementId} a`).forEach(link => {
-                link.addEventListener('click', () => {
-                    const keyword = searchInput ? searchInput.value : '';
-                    const url = link.dataset.url.replace('@@', encodeURIComponent(keyword));
+            // 链接点击
+            this.panel.querySelectorAll('.nav-links a').forEach(link => {
+                link.addEventListener('click', e => {
+                    e.preventDefault();
+                    const keywordInput = document.querySelector(this.engineConfig.elementInput);
+                    const keyword = keywordInput ? keywordInput.value : '';
+                    const url = e.target.dataset.url.replace('@@', encodeURIComponent(keyword));
                     window.open(url, '_blank');
                 });
             });
 
-            // 添加拖拽功能
-            const navElement = document.querySelector(`#search_nav_${elementId}`);
-            if (navElement) {
-                let isDragging = false;
-                let startX, startY, initialX, initialY;
+            // 拖拽和缩放
+            const dragOrResize = (e, type) => {
+                e.preventDefault();
+                this.panel.classList.add('no-transition'); // 拖拽时禁用过渡动画，防止卡顿
 
-                navElement.addEventListener('mousedown', (e) => {
-                    isDragging = true;
-                    startX = e.clientX;
-                    startY = e.clientY;
-                    initialX = navElement.offsetLeft;
-                    initialY = navElement.offsetTop;
-                    navElement.style.opacity = '0.8';
-                });
+                let startX = e.clientX, startY = e.clientY;
+                let initialX = this.panel.offsetLeft, initialY = this.panel.offsetTop;
+                let initialW = this.panel.offsetWidth, initialH = this.panel.offsetHeight;
+                let animationFrameId = null;
 
-                document.addEventListener('mousemove', (e) => {
-                    if (!isDragging) return;
-                    const dx = e.clientX - startX;
-                    const dy = e.clientY - startY;
-                    navElement.style.left = `${initialX + dx}px`;
-                    navElement.style.top = `${initialY + dy}px`;
-                });
-
-                document.addEventListener('mouseup', () => {
-                    if (isDragging) {
-                        isDragging = false;
-                        navElement.style.opacity = '1';
-                        GM_setValue(`navPosition_${hostKey}`, {
-                            x: navElement.offsetLeft,
-                            y: navElement.offsetTop
-                        });
+                const onMove = (moveEvent) => {
+                    if (animationFrameId) {
+                        cancelAnimationFrame(animationFrameId);
                     }
-                });
-            }
+                    animationFrameId = requestAnimationFrame(() => {
+                        let dx = moveEvent.clientX - startX, dy = moveEvent.clientY - startY;
+                        if (type === 'drag') {
+                            let newX = Math.max(0, Math.min(window.innerWidth - this.panel.offsetWidth, initialX + dx));
+                            let newY = Math.max(0, Math.min(window.innerHeight - this.panel.offsetHeight, initialY + dy));
+                            this.panel.style.left = `${newX}px`;
+                            this.panel.style.top = `${newY}px`;
+                        } else { // resize
+                            let newW = Math.max(200, initialW + dx);
+                            let newH = Math.max(100, initialH + dy);
+                            this.panel.style.width = `${newW}px`;
+                            if (!this.panel.classList.contains('collapsed')) {
+                                this.panel.style.height = `${newH}px`;
+                            }
+                        }
+                    });
+                };
+
+                const onEnd = () => {
+                    if (animationFrameId) {
+                        cancelAnimationFrame(animationFrameId);
+                    }
+                    if (!this.panel.classList.contains('collapsed')) {
+                        this.lastExpandedHeight = this.panel.offsetHeight;
+                    }
+                    this.saveSettings();
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onEnd);
+                    this.panel.classList.remove('no-transition'); // 拖拽结束后恢复过渡动画
+                };
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onEnd);
+            };
+
+            header.addEventListener('mousedown', e => { if (e.target === header || e.target.classList.contains('nav-title')) dragOrResize(e, 'drag'); });
+            resizeHandle.addEventListener('mousedown', e => dragOrResize(e, 'resize'));
         }
-    };
 
-    // 搜索引擎结果优化
-    this.hooks = function () {
-        const host = window.location.host;
-        if (host === "www.baidu.com") {
-            this.hookBaidu();
-        } else if (host === "www.google.com") {
-            this.hookGoogle();
-        } else if (host === "www.bing.com" || host === "cn.bing.com") {
-            this.hookBing();
-        }
-    };
-
-    // 必应搜索优化
-    this.hookBing = function () {
-        // 处理必应的广告
-        const removeAds = () => {
-            document.querySelectorAll('.b_ad').forEach(ad => ad.remove());
-        };
-
-        // 定期检查并移除广告
-        setInterval(removeAds, 1000);
-
-        // 新标签页打开搜索结果
-        document.querySelectorAll('.b_algo a').forEach(link => {
-            link.setAttribute('target', '_blank');
-        });
-    };
-
-    // Google搜索优化
-    this.hookGoogle = function () {
-        // 搜索结果新标签页打开
-        const addTargetBlank = () => {
-            document.querySelectorAll('#search .g a:not([target="_blank"])').forEach(link => {
-                if (!link.getAttribute('target')) {
-                    link.setAttribute('target', '_blank');
+        /**
+         * 等待指定元素出现在DOM中
+         * @param {string} selector - CSS选择器
+         * @param {function} callback - 元素出现后执行的回调函数
+         */
+        waitForElement(selector, callback) {
+            const interval = setInterval(() => {
+                if (document.querySelector(selector)) {
+                    clearInterval(interval);
+                    callback();
                 }
-            });
-        };
-
-        // 增加延迟，确保页面元素加载完成
-        setTimeout(() => {
-            addTargetBlank();
-        }, 1000);
-    };
-
-    // 初始化显示
-    this.show = function () {
-        const host = window.location.host;
-        const currentEngine = this.searchEnginesData.find(engine => engine.host === host);
-
-        if (currentEngine) {
-            this.createHtml(currentEngine.element, currentEngine.elementInput, this.defaultNavigationData);
-            this.hooks();
+            }, 200);
         }
-    };
+    }
 
-    // 启动
-    this.start = function () {
-        this.show();
-    };
-}
+    // 确保在DOM加载完成后再执行脚本，这是最关键的一步
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => new SearchEnhancer());
+    } else {
+        // 如果DOM已经加载完成，则直接执行
+        new SearchEnhancer();
+    }
 
-// 启动脚本
-(new SearchEnginesNavigation()).start();
+})();
