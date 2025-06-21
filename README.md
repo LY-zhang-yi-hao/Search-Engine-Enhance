@@ -5,7 +5,8 @@
 效果显示：
 - **无插件时**：![PixPin_2025-01-18_18-58-19](https://github.com/user-attachments/assets/8c0741f2-85b4-46ae-acdc-dbfe0301a947)
 
-- **有插件时**：![PixPin_2025-01-18_19-01-45](https://github.com/user-attachments/assets/20d88ee0-d25f-4d1d-ad77-31567683ed16)
+- **有插件时**：![PixPin_2025-06-21_18-39-10](https://github.com/user-attachments/assets/312520a3-42fa-4c65-9d79-1ad0a5ef93ce)
+
 
 📺 [视频讲解](https://www.bilibili.com/video/BV1xENZeyE7U/?vd_source=fabaa6d7797f3722ecb57a313189fb48)
 
